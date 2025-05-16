@@ -17,7 +17,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
-import { Plus, Check, Clock, X, Filter } from "lucide-react";
+import { Plus, Check, Clock, X, Filter, Flame } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -54,19 +54,38 @@ export default function HabitTracker({ user, profile }: Props) {
   useEffect(() => {
     const q = query(collection(db, "habits"), where("userId", "==", user.uid));
     const unsub = onSnapshot(q, (snap) => {
-      setHabits(
-        snap.docs.map((d) => {
-          const data = d.data();
-          const raw = data.createdAt as Timestamp | null;
-          return {
-            id: d.id,
-            name: data.name,
-            streak: data.streak,
-            status: data.status as HabitStatus,
-            createdAt: raw?.toDate() ?? new Date(),
-          };
-        })
-      );
+      // map into state
+      const items: Habit[] = snap.docs.map((d) => {
+        const data = d.data();
+        const rawCreated = data.createdAt as Timestamp | null;
+        return {
+          id: d.id,
+          name: data.name,
+          streak: data.streak,
+          status: data.status as HabitStatus,
+          createdAt: rawCreated?.toDate() ?? new Date(),
+        };
+      });
+  
+      // reset any missed-day habits
+      snap.docs.forEach((d) => {
+        const data = d.data();
+        if (data.status !== "Activated" && data.streak > 0) {
+          const rawLast = data.lastCompletedAt as Timestamp | null;
+          const lastDate =
+            rawLast?.toDate() ??
+            (data.createdAt as Timestamp)?.toDate() ??
+            new Date(0);
+          if (Date.now() - lastDate.getTime() > 24 * 60 * 60 * 1000) {
+            updateDoc(d.ref, {
+              streak: 0,
+              status: "Not Activated",
+            });
+          }
+        }
+      });
+  
+      setHabits(items);
     });
     return unsub;
   }, [user]);
@@ -118,6 +137,7 @@ export default function HabitTracker({ user, profile }: Props) {
     await updateDoc(doc(db, "habits", id), {
       streak: newStreak,
       status: newStatus,
+      lastCompletedAt: serverTimestamp(),
     });
     await awardXP(10);
   };
@@ -177,7 +197,7 @@ export default function HabitTracker({ user, profile }: Props) {
 
         <TabsContent value={activeTab}>
           {filtered.length === 0 ? (
-            <div className="text-center py-10 text-gray-500">No habits yet</div>
+            <div className="text-center py-10 text-gray-500">No habits added</div>
           ) : (
             <div className="grid gap-4">
               {filtered.map((h) => (
@@ -194,6 +214,7 @@ export default function HabitTracker({ user, profile }: Props) {
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
+                      <Flame className="h-4 w-4 text-red-500" />
                         <div className="text-center">
                           <div className="text-2xl font-bold">{h.streak}</div>
                           <div className="text-xs text-gray-500">days</div>
