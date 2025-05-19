@@ -11,6 +11,8 @@ import LandingPage from "@/components/landing-page";
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<{ level: number; xp: number } | null>(null);
+  const [justLeveled, setJustLeveled] = useState(false);
+  const [prevLevel, setPrevLevel] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
 
   // listen for auth changes
@@ -31,10 +33,19 @@ export default function Home() {
     if (!user) return;
     const ref = doc(db, "users", user.uid);
     const unsub = onSnapshot(ref, (snap) => {
-      if (snap.exists()) setProfile(snap.data() as any);
+      if (!snap.exists()) return;
+      const data = snap.data() as any;
+      setProfile(data);
+
+      // detect level-up
+      if (data.level > prevLevel) {
+        setJustLeveled(true);
+        setTimeout(() => setJustLeveled(false), 3000);
+      }
+      setPrevLevel(data.level);
     });
     return unsub;
-  }, [user]);
+  }, [user, prevLevel]);
 
   if (isLoading) {
     return (
@@ -61,25 +72,37 @@ export default function Home() {
   return (
     <main className="container mx-auto p-4 max-w-4xl space-y-6">
       <div className="flex justify-between items-center">
-        {/* ← top-left: Level & XP */}
+        {/* Level + XP */}
         <div>
-          <div className="text-xl font-bold">Level {profile.level}</div>
+          <span
+            className={`text-xl font-bold inline-block ${
+              justLeveled
+                ? "text-emerald-400 animate-pulse drop-shadow-lg"
+                : ""
+            }`}
+          >
+            Level {profile.level}
+          </span>
           <div className="text-sm text-gray-600">
             {profile.xp}/{threshold} XP ({needed} to go)
           </div>
         </div>
 
-        {/* top-right: user + sign-out */}
-        <div className="flex items-center gap-3 bg-[#fff8ee] p-3 rounded-xl shadow">
+        {/* User info */}
+        <div className="flex items-center gap-3 bg-[#fff8ee] p-3 rounded shadow">
           <span className="font-medium">{user.displayName}</span>
-          <Button variant="outline" className="bg-black text-white" onClick={() => signOut(auth)}>
+          <Button variant="outline" onClick={() => signOut(auth)}>
             Sign Out
           </Button>
         </div>
       </div>
 
-      {/* pass both user & profile into HabitTracker */}
-      <HabitTracker user={user} profile={profile} />
+      {/* pass down the justLeveled flag */}
+      <HabitTracker
+        user={user}
+        profile={profile}
+        justLeveled={justLeveled}
+      />
     </main>
   );
 }
