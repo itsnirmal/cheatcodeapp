@@ -50,29 +50,29 @@ export default function HabitTracker({ user, profile, justLeveled }: Props) {
   const [newHabitName, setNewHabitName] = useState("");
   const [activeTab, setActiveTab] = useState("all");
 
-  // subscribe to this user's habits (no auto-reset)
+  // 1️⃣ Just subscribe to Firestore and set state—no resets here at all
   useEffect(() => {
     const q = query(collection(db, "habits"), where("userId", "==", user.uid));
     const unsub = onSnapshot(q, (snap) => {
-      const items: Habit[] = snap.docs.map((d) => {
-        const data = d.data();
-        const rawCreated = data.createdAt?.toDate?.() ?? new Date();
-        return {
-          id: d.id,
-          name: data.name,
-          streak: data.streak,
-          status: data.status as HabitStatus,
-          createdAt: rawCreated,
-        };
-      });
-      setHabits(items);
+      setHabits(
+        snap.docs.map((d) => {
+          const data = d.data();
+          return {
+            id: d.id,
+            name: data.name,
+            streak: data.streak,
+            status: data.status as HabitStatus,
+            createdAt: data.createdAt?.toDate() ?? new Date(),
+          };
+        })
+      );
     });
     return unsub;
   }, [user]);
 
   const usedSlots = habits.filter((h) => h.status !== "Activated").length;
 
-  // helper: award XP & level-up
+  // 2️⃣ XP & leveling (unchanged)
   const awardXP = async (gain: number) => {
     const userRef = doc(db, "users", user.uid);
     await runTransaction(db, async (tx) => {
@@ -89,7 +89,7 @@ export default function HabitTracker({ user, profile, justLeveled }: Props) {
     });
   };
 
-  // add a new habit (only if under slot limit)
+  // 3️⃣ Add habit (respecting slot limit)
   const addHabit = async () => {
     if (!newHabitName.trim() || usedSlots >= profile.level) return;
     await addDoc(collection(db, "habits"), {
@@ -102,7 +102,7 @@ export default function HabitTracker({ user, profile, justLeveled }: Props) {
     setNewHabitName("");
   };
 
-  // increment streak + award XP
+  // 4️⃣ Increment / Reset / Delete
   const incrementStreak = async (id: string) => {
     const h = habits.find((h) => h.id === id);
     if (!h) return;
@@ -113,14 +113,13 @@ export default function HabitTracker({ user, profile, justLeveled }: Props) {
         : newStreak > 0
         ? "In Progress"
         : "Not Activated";
+    // ONLY update streak & status here
     await updateDoc(doc(db, "habits", id), {
       streak: newStreak,
       status: newStatus,
-      lastCompletedAt: serverTimestamp(),
     });
     await awardXP(10);
   };
-
   const resetStreak = (id: string) =>
     updateDoc(doc(db, "habits", id), {
       streak: 0,
@@ -128,12 +127,12 @@ export default function HabitTracker({ user, profile, justLeveled }: Props) {
     });
   const deleteHabit = (id: string) => deleteDoc(doc(db, "habits", id));
 
+  // 5️⃣ Render
   const filtered = habits.filter((h) =>
     activeTab === "all"
       ? true
       : h.status.toLowerCase().replace(" ", "-") === activeTab
   );
-
   const getIcon = (s: HabitStatus) =>
     s === "Activated" ? (
       <Check className="h-5 w-5 text-green-500" />
@@ -142,7 +141,6 @@ export default function HabitTracker({ user, profile, justLeveled }: Props) {
     ) : (
       <X className="h-5 w-5 text-red-400" />
     );
-
   const getColor = (s: HabitStatus) =>
     s === "Activated"
       ? "bg-green-100 text-green-800"
@@ -171,7 +169,11 @@ export default function HabitTracker({ user, profile, justLeveled }: Props) {
         </Button>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} defaultValue="all">
+      <Tabs
+        value={activeTab}
+        onValueChange={setActiveTab}
+        defaultValue="all"
+      >
         <TabsList>
           <TabsTrigger value="all">All</TabsTrigger>
           <TabsTrigger value="activated">Activated</TabsTrigger>
@@ -180,7 +182,9 @@ export default function HabitTracker({ user, profile, justLeveled }: Props) {
         </TabsList>
         <TabsContent value={activeTab}>
           {filtered.length === 0 ? (
-            <div className="text-center py-10 text-gray-500">No habits added</div>
+            <div className="text-center py-10 text-gray-500">
+              No habits added
+            </div>
           ) : (
             <div className="grid gap-4">
               {filtered.map((h) => (
