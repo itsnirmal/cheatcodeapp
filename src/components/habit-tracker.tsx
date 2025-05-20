@@ -11,7 +11,6 @@ import {
   updateDoc,
   deleteDoc,
   serverTimestamp,
-  Timestamp,
   doc,
   runTransaction,
 } from "firebase/firestore";
@@ -51,59 +50,29 @@ export default function HabitTracker({ user, profile, justLeveled }: Props) {
   const [newHabitName, setNewHabitName] = useState("");
   const [activeTab, setActiveTab] = useState("all");
 
-  // Subscribe and auto-reset at midnight
+  // subscribe to this user's habits (no auto-reset)
   useEffect(() => {
-    const q = query(
-      collection(db, "habits"),
-      where("userId", "==", user.uid)
-    );
+    const q = query(collection(db, "habits"), where("userId", "==", user.uid));
     const unsub = onSnapshot(q, (snap) => {
       const items: Habit[] = snap.docs.map((d) => {
         const data = d.data();
-        const rawCreated = data.createdAt as Timestamp | null;
+        const rawCreated = data.createdAt?.toDate?.() ?? new Date();
         return {
           id: d.id,
           name: data.name,
           streak: data.streak,
           status: data.status as HabitStatus,
-          createdAt: rawCreated?.toDate() ?? new Date(),
+          createdAt: rawCreated,
         };
       });
-
-      // Midnight boundary
-      const now = new Date();
-      const startOfToday = new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate()
-      );
-
-      // Reset missed-day habits
-      snap.docs.forEach((d) => {
-        const data = d.data();
-        if (data.status !== "Activated" && data.streak > 0) {
-          const rawLast = data.lastCompletedAt as Timestamp | null;
-          if (rawLast) {
-            const lastDate = rawLast.toDate();
-            if (lastDate < startOfToday) {
-              updateDoc(d.ref, {
-                streak: 0,
-                status: "Not Activated",
-              });
-            }
-          }
-        }
-      });
-
       setHabits(items);
     });
     return unsub;
   }, [user]);
 
-  // Slots count (non-activated)
   const usedSlots = habits.filter((h) => h.status !== "Activated").length;
 
-  // Award XP & level-up
+  // helper: award XP & level-up
   const awardXP = async (gain: number) => {
     const userRef = doc(db, "users", user.uid);
     await runTransaction(db, async (tx) => {
@@ -120,7 +89,7 @@ export default function HabitTracker({ user, profile, justLeveled }: Props) {
     });
   };
 
-  // Add habit
+  // add a new habit (only if under slot limit)
   const addHabit = async () => {
     if (!newHabitName.trim() || usedSlots >= profile.level) return;
     await addDoc(collection(db, "habits"), {
@@ -133,7 +102,7 @@ export default function HabitTracker({ user, profile, justLeveled }: Props) {
     setNewHabitName("");
   };
 
-  // Increment streak
+  // increment streak + award XP
   const incrementStreak = async (id: string) => {
     const h = habits.find((h) => h.id === id);
     if (!h) return;
@@ -152,7 +121,6 @@ export default function HabitTracker({ user, profile, justLeveled }: Props) {
     await awardXP(10);
   };
 
-  // Reset & delete
   const resetStreak = (id: string) =>
     updateDoc(doc(db, "habits", id), {
       streak: 0,
@@ -160,14 +128,12 @@ export default function HabitTracker({ user, profile, justLeveled }: Props) {
     });
   const deleteHabit = (id: string) => deleteDoc(doc(db, "habits", id));
 
-  // Filter
   const filtered = habits.filter((h) =>
     activeTab === "all"
       ? true
       : h.status.toLowerCase().replace(" ", "-") === activeTab
   );
 
-  // Status icons/colors
   const getIcon = (s: HabitStatus) =>
     s === "Activated" ? (
       <Check className="h-5 w-5 text-green-500" />
@@ -176,6 +142,7 @@ export default function HabitTracker({ user, profile, justLeveled }: Props) {
     ) : (
       <X className="h-5 w-5 text-red-400" />
     );
+
   const getColor = (s: HabitStatus) =>
     s === "Activated"
       ? "bg-green-100 text-green-800"
@@ -185,14 +152,12 @@ export default function HabitTracker({ user, profile, justLeveled }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Level-up hint */}
       {justLeveled && (
         <div className="text-center text-green-600 font-medium animate-pulse">
           🎉 You leveled up — you can add another habit!
         </div>
       )}
 
-      {/* Add habit input */}
       <div className="flex gap-2 bg-[#fff8ee] p-4 rounded-xl shadow">
         <Input
           placeholder="Enter a new habit…"
@@ -206,7 +171,6 @@ export default function HabitTracker({ user, profile, justLeveled }: Props) {
         </Button>
       </div>
 
-      {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} defaultValue="all">
         <TabsList>
           <TabsTrigger value="all">All</TabsTrigger>

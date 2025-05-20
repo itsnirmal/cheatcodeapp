@@ -40,7 +40,7 @@ export default function Home() {
       // detect level-up
       if (data.level > prevLevel) {
         setJustLeveled(true);
-        setTimeout(() => setJustLeveled(false), 3000);
+        setTimeout(() => setJustLeveled(false), 9000);
       }
       setPrevLevel(data.level);
     });
